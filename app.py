@@ -2,7 +2,6 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 
-import sqlalchemy
 from flask import Flask, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 
