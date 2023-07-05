@@ -2,15 +2,17 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, session
 from flask_sqlalchemy import SQLAlchemy
 
 # -----------------------------------
 app = Flask(__name__)
+app.app_context().push()
+
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = os.urandom(16)  # Set a secret key for session management
 db = SQLAlchemy(app)
-
 
 class Database(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -22,41 +24,38 @@ class Database(db.Model):
         return f"User('{self.name}', '{self.email}', '{self.message}')"
 
 
-# db.create_all()
+db.create_all()
 
-def sendmail(msg):
-    print(msg)
+
+def send_mail(msg):
     if msg is None:
-        print("Error: msg cannot be None")
-    sender = os.environ.get('my_email')
-    recipient = "meen79508@gmail.com"
-    password = os.environ.get('my_password')
-    subject = "msg from ur own website"
-    content = f"hello Trap , \n\n this is an automated message from : {msg['name']} \n and msg is : {msg['message']}"
+        return "Error: msg cannot be None"
 
-    message = MIMEText(content,'plain', 'utf-8')
+    sender = os.environ.get('my_email')
+    recipient = os.environ.get('recipient_email')
+    password = os.environ.get('my_password')
+    subject = "Message from your website"
+    content = f"Hello Trap,\n\nThis is an automated message from: {msg['name']}\nMessage: {msg['message']}"
+
+    message = MIMEText(content, 'plain', 'utf-8')
     message['Subject'] = subject
     message['From'] = sender
     message['To'] = recipient
 
     try:
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-        server.ehlo()
-        server.login(sender, password)
-        server.sendmail(sender, recipient, message.as_string())
-        print("Email sent successfully")
-        data = Database(name=msg['name'], email=msg['email'], message=msg['message'])
-        db.session.add(data)
-        db.session.commit()
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.ehlo()
+            server.login(sender, password)
+            server.sendmail(sender, recipient, message.as_string())
+            print("Email sent successfully")
+
+            data = Database(name=msg['name'], email=msg['email'], message=msg['message'])
+            db.session.add(data)
+            db.session.commit()
 
     except Exception as e:
         print("Failed to send email")
         print(e)
-    finally:
-        server.quit()
-
-
-success = False
 
 
 @app.route('/')
@@ -66,23 +65,22 @@ def home():
 
 @app.route("/contact", methods=['GET', 'POST'])
 def contact():
-    global success
     if request.method == 'POST':
-        if success:
-            return render_template("index.html", success=success)
+        if 'success' in session:
+            return render_template("index.html", msg_sent=session['success'])
+
         data = {
             'name': request.form['name'],
             'email': request.form['email'],
             'message': request.form['message'],
         }
-        sendmail(data)
-        event = True
-        success = event
 
-        return render_template("index.html", msg_sent=event)
+        send_mail(data)
+        session['success'] = True
+        return render_template("index.html", msg_sent=True)
 
     else:
-        success = False
+        session.pop('success', None)
         return render_template("index.html")
 
 
